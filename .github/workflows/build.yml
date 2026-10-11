@@ -1,0 +1,94 @@
+name: Build kernel
+
+on:
+  pull_request:
+    paths:
+      - build.sh
+      - kernel_versions.txt
+      - configs/**
+      - fragments/**
+      - scripts/**
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Kernel version (must be in kernel_versions.txt)
+        required: true
+        default: "6.1.182"
+      build:
+        description: RenderOps build number, giving vmlinux-<version>-renderops.<build>
+        required: true
+        default: "1"
+      publish:
+        description: Publish a GitHub Release (release names are never reused)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ inputs.version || '6.1.182' }}
+      RENDEROPS_BUILD: ${{ inputs.build || '1' }}
+      # Pull requests only resolve and check the config; compiling is for releases.
+      CONFIG_ONLY: ${{ github.event_name == 'pull_request' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version: $VERSION"; exit 1; }
+          [[ "$RENDEROPS_BUILD" =~ ^[0-9]+$ ]] || { echo "bad build: $RENDEROPS_BUILD"; exit 1; }
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential dwarves flex libelf-dev libssl-dev
+
+      - name: Check stored configs
+        run: make check
+
+      - name: Build
+        run: ./build.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vmlinux-${{ env.VERSION }}-renderops.${{ env.RENDEROPS_BUILD }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      NAME: vmlinux-${{ inputs.version }}-renderops.${{ inputs.build }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vmlinux-${{ inputs.version }}-renderops.${{ inputs.build }}
+          path: dist/
+
+      - name: Publish release
+        run: |
+          if gh release view "$NAME" >/dev/null 2>&1; then
+            echo "release $NAME already exists; bump the build number instead of replacing it"
+            exit 1
+          fi
+          TAG="$(awk -v v="$VERSION" '$1 == v { print $2 }' kernel_versions.txt)"
+          cd "dist/$NAME"
+          sha256sum -c SHA256SUMS
+          cp vmlinux "$NAME"
+          cp config "$NAME.config"
+          gh release create "$NAME" "$NAME" "$NAME.config" SHA256SUMS \
+            --title "$NAME" \
+            --notes "Firecracker guest kernel built from amazonlinux/linux tag $TAG with configs/x86_64/$VERSION.config + fragments/. Corresponding source: that tag plus the attached .config (GPL-2.0)."

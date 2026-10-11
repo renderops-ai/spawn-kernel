@@ -1,0 +1,18 @@
+renderops-kernels
+Copyright 2026 RenderOps
+
+This repository includes kernel configuration files from E2B Runtime
+(https://github.com/e2b-dev/runtime, firecracker/fc-kernels), licensed under
+the Apache License, Version 2.0:
+
+  configs/x86_64/6.1.182.config
+    copied unmodified from e2b-dev/runtime commit
+    7120631ba8745006a6fdda2ba456f8b8e2f1a27c
+    (firecracker/fc-kernels/configs/x86_64/6.1.182.config)
+
+The build approach (Amazon Linux microvm-kernel tags + per-version configs)
+follows E2B's fc-kernels.
+
+The Linux kernel itself is licensed under GPL-2.0. This repository does not
+contain kernel source; published vmlinux binaries are built from the pinned
+amazonlinux/linux tags in kernel_versions.txt plus the published .config.
