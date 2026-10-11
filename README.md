@@ -1,4 +1,4 @@
-# renderops-kernels
+# spawn-kernel
 
 Builds the Linux guest kernel (`vmlinux`) that RenderOps sandboxes boot in
 Firecracker. The sandbox platform repo pins one published kernel by version and
