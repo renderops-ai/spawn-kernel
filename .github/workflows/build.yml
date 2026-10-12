@@ -93,3 +93,10 @@ jobs:
           gh release create "$NAME" "$NAME" "$NAME.debug" "$NAME.config" SHA256SUMS \
             --title "$NAME" \
             --notes "Firecracker guest kernel built from amazonlinux/linux tag $TAG with configs/x86_64/$VERSION.config + fragments/. $NAME is the stripped kernel workers boot; $NAME.debug holds its debug info for crash analysis. Corresponding source: that tag plus the attached .config (GPL-2.0)."
+
+      - name: Mirror to Blob
+        env:
+          BLOB_STORAGE_ACCOUNT: ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          BLOB_SECRET_KEY: ${{ secrets.BLOB_SECRET_KEY }}
+          BLOB_CONTAINER_NAME: ${{ secrets.BLOB_CONTAINER_NAME }}
+        run: scripts/mirror-to-blob.sh "$NAME" "dist/$NAME"
