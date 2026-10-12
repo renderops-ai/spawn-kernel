@@ -30,7 +30,7 @@ CONFIG_ONLY=1 ./build.sh        # fetch source, resolve + check config, no compi
 RENDEROPS_BUILD=1 ./build.sh    # full build -> dist/vmlinux-6.1.182-renderops.1/
 ```
 
-Output: `dist/vmlinux-<version>-renderops.<build>/` with `vmlinux`, `config`, `SHA256SUMS`.
+Output: `dist/vmlinux-<version>-renderops.<build>/` with `vmlinux` (stripped, what workers boot), `vmlinux.debug` (debug info for crash analysis), `config`, `SHA256SUMS`. The build fails if the stripped kernel is over 128 MB.
 
 ## Release
 

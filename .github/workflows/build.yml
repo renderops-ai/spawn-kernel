@@ -88,7 +88,8 @@ jobs:
           cd "dist/$NAME"
           sha256sum -c SHA256SUMS
           cp vmlinux "$NAME"
+          cp vmlinux.debug "$NAME.debug"
           cp config "$NAME.config"
-          gh release create "$NAME" "$NAME" "$NAME.config" SHA256SUMS \
+          gh release create "$NAME" "$NAME" "$NAME.debug" "$NAME.config" SHA256SUMS \
             --title "$NAME" \
-            --notes "Firecracker guest kernel built from amazonlinux/linux tag $TAG with configs/x86_64/$VERSION.config + fragments/. Corresponding source: that tag plus the attached .config (GPL-2.0)."
+            --notes "Firecracker guest kernel built from amazonlinux/linux tag $TAG with configs/x86_64/$VERSION.config + fragments/. $NAME is the stripped kernel workers boot; $NAME.debug holds its debug info for crash analysis. Corresponding source: that tag plus the attached .config (GPL-2.0)."

@@ -10,7 +10,8 @@
 #   configs/x86_64/<version>.config   base config (from E2B, see NOTICE)
 #   fragments/*.config                RenderOps changes, applied in name order
 # Output (in dist/):
-#   vmlinux-<version>-renderops.<RENDEROPS_BUILD>/{vmlinux,config,SHA256SUMS}
+#   vmlinux-<version>-renderops.<RENDEROPS_BUILD>/{vmlinux,vmlinux.debug,config,SHA256SUMS}
+#   vmlinux is stripped of debug info (what workers boot); vmlinux.debug holds it.
 #
 # Linux only: Kconfig probes the host compiler, so build on an x86_64 Linux host.
 set -euo pipefail
@@ -21,6 +22,8 @@ BUILD="${RENDEROPS_BUILD:-1}"
 SRC_REPO="${KERNEL_SRC_REPO:-https://github.com/amazonlinux/linux}"
 WORK_DIR="$SCRIPT_DIR/work"
 DIST_DIR="$SCRIPT_DIR/dist"
+# Every worker copies and hashes the kernel; an unstripped one is ~600 MB.
+MAX_VMLINUX_BYTES=$((128 * 1024 * 1024))
 
 die() {
 	echo "error: $*" >&2
@@ -29,7 +32,7 @@ die() {
 
 require_tools() {
 	local tool
-	for tool in git make gcc bc bison flex sha256sum; do
+	for tool in git make gcc bc bison flex objcopy stat sha256sum; do
 		command -v "$tool" >/dev/null 2>&1 || die "missing build tool: $tool"
 	done
 }
@@ -107,9 +110,17 @@ build_version() {
 	out="$DIST_DIR/$name"
 	rm -rf "$out"
 	mkdir -p "$out"
-	cp "$src/vmlinux" "$out/vmlinux"
+	# The base config builds DWARF debug info, ~10x the size of the kernel itself.
+	# Firecracker never loads it, so ship a stripped vmlinux and keep the debug
+	# info separately for crash analysis.
+	objcopy --only-keep-debug "$src/vmlinux" "$out/vmlinux.debug"
+	objcopy --strip-debug "$src/vmlinux" "$out/vmlinux"
+	local size
+	size="$(stat -c %s "$out/vmlinux")"
+	[ "$size" -le "$MAX_VMLINUX_BYTES" ] ||
+		die "stripped vmlinux is $size bytes (limit $MAX_VMLINUX_BYTES); debug info was not removed"
 	cp "$src/.config" "$out/config"
-	(cd "$out" && sha256sum vmlinux config >SHA256SUMS)
+	(cd "$out" && sha256sum vmlinux vmlinux.debug config >SHA256SUMS)
 	echo "==> built dist/$name"
 	cat "$out/SHA256SUMS"
 }
