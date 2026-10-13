@@ -30,6 +30,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -88,7 +92,10 @@ jobs:
         run: scripts/check-runtime.sh dist/config "$FC"
 
       - name: Boot test
-        run: BUSYBOX=/bin/busybox scripts/boot-test.sh "$PWD/dist/vmlinux" "$PWD/dist/firecracker" | tee dist/boot-test.log
+        # pipefail: without it the step takes tee's exit status and a failed boot passes.
+        run: |
+          set -o pipefail
+          BUSYBOX=/bin/busybox scripts/boot-test.sh "$PWD/dist/vmlinux" "$PWD/dist/firecracker" | tee dist/boot-test.log
 
       - name: Write manifest
         run: |
