@@ -25,13 +25,23 @@ export AZURE_STORAGE_KEY="$BLOB_SECRET_KEY"
 blob() { az storage blob "$@" --container-name "$BLOB_CONTAINER_NAME" --only-show-errors; }
 
 cd "$DIR"
+jq empty manifest.json || { echo "manifest.json is not valid JSON" >&2; exit 1; }
 sha256sum vmlinux firecracker config manifest.json >SHA256SUMS
 
 if [ "$(blob exists --name "$PREFIX/SHA256SUMS" --query exists -o tsv)" = "true" ]; then
 	blob download --name "$PREFIX/SHA256SUMS" --file SHA256SUMS.remote >/dev/null
 	# manifest.json carries the test time, so compare only the runtime's binaries.
 	if diff <(grep -v manifest.json SHA256SUMS) <(grep -v manifest.json SHA256SUMS.remote) >/dev/null; then
-		echo "already published: $PREFIX"
+		blob download --name "$PREFIX/manifest.json" --file manifest.remote.json >/dev/null
+		if jq empty manifest.remote.json 2>/dev/null; then
+			echo "already published: $PREFIX"
+		else
+			# Same binaries, unreadable metadata (runtime v1 shipped a \r in it):
+			# replace only the manifest and the checksum list.
+			blob upload --name "$PREFIX/manifest.json" --file manifest.json --overwrite true >/dev/null
+			blob upload --name "$PREFIX/SHA256SUMS" --file SHA256SUMS --overwrite true >/dev/null
+			echo "repaired invalid manifest.json in $PREFIX"
+		fi
 	else
 		echo "$PREFIX already exists with different binaries; add a new runtime instead" >&2
 		exit 1

@@ -103,20 +103,21 @@ jobs:
 
       - name: Write manifest
         run: |
-          cat > dist/manifest.json <<EOF
-          {
-            "runtime": "$RUNTIME",
-            "kernel": "$KERNEL",
-            "kernel_sha256": "$(sha256sum dist/vmlinux | cut -d' ' -f1)",
-            "firecracker": "$FC",
-            "firecracker_sha256": "$(sha256sum dist/firecracker | cut -d' ' -f1)",
-            "boot_test": "passed",
-            "guest_kernel": "$(sed -n 's/^BOOT_KERNEL //p' dist/boot-test.log)",
-            "tested_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "tested_by": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          }
-          EOF
-          cat dist/manifest.json
+          # jq builds the JSON so values can never break it; the console log has \r.
+          jq -n \
+            --arg runtime "$RUNTIME" \
+            --arg kernel "$KERNEL" \
+            --arg kernel_sha256 "$(sha256sum dist/vmlinux | cut -d' ' -f1)" \
+            --arg firecracker "$FC" \
+            --arg firecracker_sha256 "$(sha256sum dist/firecracker | cut -d' ' -f1)" \
+            --arg guest_kernel "$(tr -d '\r' < dist/boot-test.log | sed -n 's/^BOOT_KERNEL //p')" \
+            --arg tested_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg tested_by "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '{runtime: $runtime, kernel: $kernel, kernel_sha256: $kernel_sha256,
+              firecracker: $firecracker, firecracker_sha256: $firecracker_sha256,
+              boot_test: "passed", guest_kernel: $guest_kernel,
+              tested_at: $tested_at, tested_by: $tested_by}' > dist/manifest.json
+          jq . dist/manifest.json
 
       - uses: actions/upload-artifact@v4
         with:
