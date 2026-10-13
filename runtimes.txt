@@ -1,0 +1,7 @@
+# Runtime = a guest kernel release + the Firecracker version it is proven to work
+# with. Published to Azure Blob as runtime-releases/<runtime>/ only after
+# scripts/check-runtime.sh and scripts/boot-test.sh pass. Never edit a published
+# line; add a new runtime instead.
+#
+# <runtime> <kernel release (GitHub Release of this repo)> <firecracker version (firecracker.lock)>
+v1 vmlinux-6.1.182-renderops.3 v1.7.0

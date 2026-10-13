@@ -1,0 +1,4 @@
+# Firecracker releases runtimes may use: <version> <sha256 of the release tarball>
+# Tarball: https://github.com/firecracker-microvm/firecracker/releases/download/<version>/firecracker-<version>-x86_64.tgz
+# v1.7.0 is byte-identical to the binary on the RenderOps workers today.
+v1.7.0 55bd3e6d599fdd108e36e52f9aee2319f06c18a90f2fa49b64e93fdf06f5ff53

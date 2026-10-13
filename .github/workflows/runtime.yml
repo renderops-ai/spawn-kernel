@@ -1,0 +1,140 @@
+name: Runtime
+
+# Tests a kernel + Firecracker pair (runtimes.txt) and publishes it to Azure Blob
+# as runtime-releases/<runtime>/. Publishing requires the rules check and the
+# boot test to pass. "kernel"/"firecracker" inputs override the pair for
+# test-only runs and cannot be published.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runtime:
+        description: Runtime from runtimes.txt
+        required: true
+        default: v1
+      publish:
+        description: Publish runtime-releases/<runtime>/ after the tests pass
+        type: boolean
+        default: false
+      make_default:
+        description: Also point runtime-releases/default.json at it
+        type: boolean
+        default: false
+      kernel:
+        description: "Test only: kernel release to use instead of runtimes.txt"
+        required: false
+      firecracker:
+        description: "Test only: Firecracker version to use instead of runtimes.txt"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    env:
+      RUNTIME: ${{ inputs.runtime }}
+      KERNEL_OVERRIDE: ${{ inputs.kernel }}
+      FC_OVERRIDE: ${{ inputs.firecracker }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pair
+        run: |
+          [[ "$RUNTIME" =~ ^v[0-9]+$ ]] || { echo "bad runtime: $RUNTIME"; exit 1; }
+          read -r _ kernel fc < <(awk -v r="$RUNTIME" '$1 == r { print $1, $2, $3 }' runtimes.txt)
+          kernel="${KERNEL_OVERRIDE:-$kernel}"
+          fc="${FC_OVERRIDE:-$fc}"
+          [[ "$kernel" =~ ^vmlinux-[A-Za-z0-9._-]+$ ]] || { echo "no kernel for $RUNTIME"; exit 1; }
+          [[ "$fc" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no firecracker for $RUNTIME"; exit 1; }
+          fc_sha="$(awk -v v="$fc" '$1 == v { print $2 }' firecracker.lock)"
+          [[ "$fc_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "firecracker $fc is not in firecracker.lock"; exit 1; }
+          { echo "KERNEL=$kernel"; echo "FC=$fc"; echo "FC_TGZ_SHA=$fc_sha"; } >> "$GITHUB_ENV"
+          echo "testing $kernel with firecracker $fc"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -w /dev/kvm
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends busybox-static cpio
+
+      - name: Download kernel
+        run: |
+          mkdir -p dist
+          gh release download "$KERNEL" --dir dist --pattern "$KERNEL" --pattern "$KERNEL.config" --pattern SHA256SUMS
+          mv "dist/$KERNEL" dist/vmlinux
+          mv "dist/$KERNEL.config" dist/config
+          (cd dist && grep -E '  (vmlinux|config)$' SHA256SUMS | sha256sum -c - && rm SHA256SUMS)
+
+      - name: Download Firecracker
+        run: |
+          url="https://github.com/firecracker-microvm/firecracker/releases/download/$FC/firecracker-$FC-x86_64.tgz"
+          curl -fsSL -o fc.tgz "$url"
+          echo "$FC_TGZ_SHA  fc.tgz" | sha256sum -c -
+          tar -xzf fc.tgz "release-$FC-x86_64/firecracker-$FC-x86_64"
+          install -m 0755 "release-$FC-x86_64/firecracker-$FC-x86_64" dist/firecracker
+          dist/firecracker --version | head -1
+
+      - name: Rules check
+        # Test-only runs keep going so the boot test shows what the rule predicts.
+        continue-on-error: ${{ inputs.kernel != '' || inputs.firecracker != '' }}
+        run: scripts/check-runtime.sh dist/config "$FC"
+
+      - name: Boot test
+        run: BUSYBOX=/bin/busybox scripts/boot-test.sh "$PWD/dist/vmlinux" "$PWD/dist/firecracker" | tee dist/boot-test.log
+
+      - name: Write manifest
+        run: |
+          cat > dist/manifest.json <<EOF
+          {
+            "runtime": "$RUNTIME",
+            "kernel": "$KERNEL",
+            "kernel_sha256": "$(sha256sum dist/vmlinux | cut -d' ' -f1)",
+            "firecracker": "$FC",
+            "firecracker_sha256": "$(sha256sum dist/firecracker | cut -d' ' -f1)",
+            "boot_test": "passed",
+            "guest_kernel": "$(sed -n 's/^BOOT_KERNEL //p' dist/boot-test.log)",
+            "tested_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "tested_by": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          cat dist/manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ inputs.runtime }}
+          path: |
+            dist/vmlinux
+            dist/firecracker
+            dist/config
+            dist/manifest.json
+          if-no-files-found: error
+
+  publish:
+    if: inputs.publish && inputs.kernel == '' && inputs.firecracker == ''
+    needs: test
+    runs-on: ubuntu-24.04
+    env:
+      RUNTIME: ${{ inputs.runtime }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-${{ inputs.runtime }}
+          path: dist/
+
+      - name: Publish to Blob
+        env:
+          BLOB_STORAGE_ACCOUNT: ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          BLOB_SECRET_KEY: ${{ secrets.BLOB_SECRET_KEY }}
+          BLOB_CONTAINER_NAME: ${{ secrets.BLOB_CONTAINER_NAME }}
+          MAKE_DEFAULT: ${{ inputs.make_default && '--default' || '' }}
+        run: scripts/publish-runtime.sh "$RUNTIME" dist $MAKE_DEFAULT
