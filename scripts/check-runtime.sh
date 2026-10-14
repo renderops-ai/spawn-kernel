@@ -25,10 +25,12 @@ require() {
 	fi
 }
 
-# Device discovery: before v1.8 Firecracker passes virtio devices only on the
-# kernel command line; from v1.8 it describes them in ACPI tables.
+# Boot style: before v1.8 Firecracker announces virtio devices on the kernel
+# command line and describes vCPUs in an MP table; from v1.8 it describes both
+# in ACPI tables.
 if [ "$major" -eq 1 ] && [ "$minor" -lt 8 ]; then
 	require VIRTIO_MMIO_CMDLINE_DEVICES "devices are announced on the kernel command line"
+	require X86_MPPARSE "vCPUs are described in an MP table"
 else
 	if ! grep -qx "CONFIG_ACPI=y" "$config" && ! grep -qx "CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y" "$config"; then
 		echo "missing for firecracker $fc_version: CONFIG_ACPI=y or CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y" >&2

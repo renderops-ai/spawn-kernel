@@ -6,7 +6,8 @@
 #   scripts/boot-test.sh <vmlinux> <firecracker binary>
 #
 # The guest is a tiny busybox initramfs, not the RenderOps rootfs: it checks for
-# a virtio disk, virtio network, vsock, overlayfs and cgroup2, prints one line
+# a virtio disk, virtio network, vsock, overlayfs, cgroup2 and both of its 2 vCPUs,
+# prints one line
 # per check, then reboots, which makes Firecracker exit. Template builds test the
 # full guest (rootfs, guest agent) on top of a runtime that passed this.
 #
@@ -80,6 +81,8 @@ mkdir -p /mnt/t/lower /mnt/t/upper /mnt/t/work /mnt/t/merged
 check overlay mount -t overlay o -o lowerdir=/mnt/t/lower,upperdir=/mnt/t/upper,workdir=/mnt/t/work /mnt/t/merged
 mkdir -p /mnt/cgroup
 check cgroup2 mount -t cgroup2 none /mnt/cgroup
+# The VM is started with 2 vCPUs; the guest must bring both up.
+check cpus-2 test "$(grep -c '^processor' /proc/cpuinfo)" -eq 2
 echo "BOOT_KERNEL $(cat /proc/sys/kernel/osrelease)"
 if [ "$failed" -eq 0 ]; then echo BOOT_TEST_PASS; else echo BOOT_TEST_FAIL; fi
 reboot -f
@@ -106,7 +109,7 @@ cat >"$WORK/config.json" <<CONFIG
     { "iface_id": "eth0", "guest_mac": "06:00:AC:10:00:02", "host_dev_name": "$TAP" }
   ],
   "vsock": { "guest_cid": 3, "uds_path": "$WORK/vsock.sock" },
-  "machine-config": { "vcpu_count": 1, "mem_size_mib": 256 }
+  "machine-config": { "vcpu_count": 2, "mem_size_mib": 256 }
 }
 CONFIG
 

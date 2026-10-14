@@ -5,3 +5,4 @@
 #
 # <runtime> <kernel release (GitHub Release of this repo)> <firecracker version (firecracker.lock)>
 v1 vmlinux-6.1.182-renderops.3 v1.7.0
+v2 vmlinux-6.1.182-renderops.4 v1.7.0
