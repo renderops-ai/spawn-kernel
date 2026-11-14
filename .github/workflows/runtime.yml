@@ -1,8 +1,10 @@
 name: Runtime
 
-# Tests a kernel + Firecracker pair (runtimes.txt) and publishes it to Azure Blob
-# as runtime-releases/<runtime>/. Publishing requires the rules check and the
-# boot test to pass. "kernel"/"firecracker" inputs override the pair for
+# Tests a kernel + Firecracker pair (runtimes.txt) and records it as GitHub
+# release runtime-<runtime>: the manifest of what passed (kernel and Firecracker
+# with their sha256, the boot test run). Publishing requires the rules check and
+# the boot test to pass. Workers take the kernel and Firecracker from their own
+# releases, pinned in the backend's ops/worker/{kernel,firecracker}.lock. "kernel"/"firecracker" inputs override the pair for
 # test-only runs and cannot be published.
 
 on:
@@ -13,11 +15,7 @@ on:
         required: true
         default: v1
       publish:
-        description: Publish runtime-releases/<runtime>/ after the tests pass
-        type: boolean
-        default: false
-      make_default:
-        description: Also point runtime-releases/default.json at it
+        description: Publish release runtime-<runtime> after the tests pass
         type: boolean
         default: false
       kernel:
@@ -133,20 +131,26 @@ jobs:
     if: inputs.publish && inputs.kernel == '' && inputs.firecracker == ''
     needs: test
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
       RUNTIME: ${{ inputs.runtime }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           name: runtime-${{ inputs.runtime }}
           path: dist/
-
-      - name: Publish to Blob
-        env:
-          BLOB_STORAGE_ACCOUNT: ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          BLOB_SECRET_KEY: ${{ secrets.BLOB_SECRET_KEY }}
-          BLOB_CONTAINER_NAME: ${{ secrets.BLOB_CONTAINER_NAME }}
-          MAKE_DEFAULT: ${{ inputs.make_default && '--default' || '' }}
-        run: scripts/publish-runtime.sh "$RUNTIME" dist $MAKE_DEFAULT
+      - name: Publish release
+        run: |
+          name="runtime-$RUNTIME"
+          if gh release view "$name" >/dev/null 2>&1; then
+            echo "release $name already exists; add a new runtime to runtimes.txt instead of replacing it"
+            exit 1
+          fi
+          cd dist
+          sha256sum manifest.json > SHA256SUMS
+          gh release create "$name" manifest.json SHA256SUMS \
+            --title "$name: $(jq -r '.kernel + " + Firecracker " + .firecracker' manifest.json)" \
+            --notes "Boot-tested pair: $(jq -r '.kernel' manifest.json) with Firecracker $(jq -r '.firecracker' manifest.json). Tested by $(jq -r '.tested_by' manifest.json)."

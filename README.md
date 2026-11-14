@@ -52,8 +52,10 @@ workers rebuild their snapshot templates because the kernel digest changes.
 
 ## Runtimes (kernel + Firecracker)
 
-Workers do not consume kernel releases directly. They use a **runtime**: a
-kernel release plus the Firecracker version it is proven to work with.
+A **runtime** is a kernel release plus the Firecracker version it is proven to
+work with. Workers pin both in the backend (`ops/worker/kernel.lock` and
+`ops/worker/firecracker.lock`) and download them from their GitHub releases;
+a runtime release records that the pair passed the tests here.
 
 | File | Purpose |
 |---|---|
@@ -61,9 +63,9 @@ kernel release plus the Firecracker version it is proven to work with.
 | `firecracker.lock` | Allowed Firecracker versions and the sha256 of their release tarballs |
 | `scripts/check-runtime.sh` | Kernel config rules that depend on the Firecracker version (e.g. before v1.8, devices are announced on the kernel command line and need `CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y`) |
 | `scripts/boot-test.sh` | Boots the pair in real Firecracker (KVM) with a busybox guest that checks virtio disk, network, vsock, overlay and cgroup2 |
-| `scripts/publish-runtime.sh` | Uploads `runtime-releases/<runtime>/{vmlinux,firecracker,config,manifest.json,SHA256SUMS}` to Azure Blob, never overwriting; optionally points `runtime-releases/default.json` at it |
+| Release `runtime-<runtime>` | The tested pair's `manifest.json` (kernel and Firecracker with their sha256, the boot test run), never overwritten |
 
-GitHub Actions → **Runtime** → `runtime`, `publish`, `make_default`. Publishing
+GitHub Actions → **Runtime** → `runtime`, `publish`. Publishing
 requires the rules check and the boot test to pass. The `kernel` / `firecracker`
 inputs test any other pair without publishing it.
 
