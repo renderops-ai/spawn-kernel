@@ -1,3 +1,4 @@
 # <version> <amazonlinux/linux tag the version is built from>
 # The tag is pinned so a rebuild compiles exactly the same source.
 6.1.182 microvm-kernel-6.1.182-47.379.amzn2023
+6.1.188 microvm-kernel-6.1.188-56.393.amzn2023
